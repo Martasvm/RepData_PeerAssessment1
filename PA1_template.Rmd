@@ -5,21 +5,176 @@ output:
     keep_md: true
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error=FALSE)
+```
+
+
+We employ data from a personal device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
 
 ## Loading and preprocessing the data
+First, I remove everything in my environment and set the working directory and load the libraries
+```{r}
+rm(list=ls())
+setwd("~/Documents/GitHub/RepData_PeerAssessment1")
+library(dplyr)
+library(ggplot2)
+library(R.utils)
+library(rmarkdown)
+library(knitr)
+library(readr)
+library(mice)
+library(lattice)
+```
+And load the data, which must be unzip first (read.csv does it automatically)
+```{r}
+unzip(zipfile="activity.zip")
+list.files()
+data = read.csv("activity.csv", header=TRUE)
+```
+We explore the data and check the class of the columns
 
+```{r}
+colnames(data)
+head(data)
+str(data)
+pairs(data)
+```
+We see that we have 3 columns and 17568 observations. Steps and interval are already in integer format, while Date is in Factor format. We keep it by now, as it will ease the analysis of the following question. 
 
 
 ## What is mean total number of steps taken per day?
+1. Calculate the total number of steps taken per day. 
 
+
+For this part of the assignment, we are requested to ignore the missing values in the dataset. We compute the total number of steps per day, and plot it into a histogram:
+```{r}
+sum_data = data %>% group_by(date) %>% summarise(total_steps=sum(steps))
+```
+2. Make a histogram of the total number of steps taken each day
+
+```{r}
+hist(sum_data$total_steps, main= "Histogram of total number of steps per day", xlab="Total number of steps", ylab="Frequency")
+```
+
+
+3. Calculate and report the mean and median of the total number of steps taken per day
+
+We obtain the mean and median steps during the period:
+```{r}
+sum_data %>% summarise(mean_steps=mean(total_steps, na.rm=TRUE),median_steps=median(total_steps, na.rm=TRUE))
+```
+
+As we can observe, the owner of the devices takes in mean 10766 steps per day. Median is very close, which suggests distribution is not very much skewed.
 
 
 ## What is the average daily activity pattern?
+1. Make a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
 
+I try to understand the variables first:
+```{r}
+unique(data$interval)
+unique(data$date)
+```
+
+And then produce the metrics and the plot:
+
+```{r}
+avg_steps_by_interval= data %>% group_by(interval) %>% summarise(avg_by_interval=mean(steps, na.rm=TRUE))
+
+plot(avg_steps_by_interval$interval, avg_steps_by_interval$avg_by_interval, xlab= "Interval of the day (in 5 mins)", ylab="Average steps taken, across all days", main= "Average daily activity pattern", type="l")
+```
+
+2. Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?".
+
+```{r}
+intervalmaxsteps <- avg_steps_by_interval[which.max(avg_steps_by_interval$avg_by_interval),]$interval
+intervalmaxsteps 
+```
+
+The 825th interval is the one with the maximum number of steps.
 
 
 ## Imputing missing values
 
+1. Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs):
 
+```{r}
+sum(is.na(data)) 
+sum(is.na(data$steps))
+```
+
+There are 2304 missing data, all of them in the steps variable
+
+2. Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be sophisticated. For example, you could use the mean/median for that day, or the mean for that 5-minute interval, etc.
+
+```{r}
+imputed_data = data
+meanvalue=mean(data$steps, na.rm=TRUE)
+imputed_data$steps[is.na(imputed_data$steps)] <- meanvalue
+sum(is.na(data$steps))
+sum(is.na(data))
+sum(is.na(imputed_data))
+```
+
+
+
+3. Create a new dataset that is equal to the original dataset but with the missing data filled in.
+
+Already done in previous point
+
+4. Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+```{r}
+str(imputed_data)
+sum_data2 = imputed_data %>% group_by(date) %>% summarise(total_steps=sum(steps))
+hist(sum_data$total_steps, main= "Histogram of total number of steps per day", xlab="Total number of steps", ylab="Frequency")
+```
+
+```{r}
+sum_data2 %>% summarise(mean_steps=mean(total_steps), median_steps=median(total_steps))
+```
+
+Once missing values have been imputed, both the histogram and mean/median change. Mean and median coincide now.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+For this part the weekdays() function may be of some help here. Use the dataset with the filled-in missing values for this part.
+
+1. Create a new factor variable in the dataset with two levels – “weekday” and “weekend” indicating whether a given date is a weekday or weekend day.
+
+
+```{r}
+imputed_data$date <- as.Date(imputed_data$date, format ="%Y-%m-%d")
+imputed_data$day <- weekdays(imputed_data$date)
+
+imputed_data$day <- factor(format(imputed_data$date, "%A"))
+levels(imputed_data$day)
+
+levels(imputed_data$day) <- list(weekday = c("Monday", "Tuesday",
+                                             "Wednesday", 
+                                             "Thursday", "Friday"),
+                                 weekend = c("Saturday", "Sunday"))
+levels(imputed_data$day)
+table(imputed_data$day)
+
+
+```
+
+
+
+
+2. Make a panel plot containing a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis). See the README file in the GitHub repository to see an example of what this plot should look like using simulated data.
+
+
+```{r}
+imputed_data$interval = as.factor(imputed_data$interval)
+sum_data3 = imputed_data %>% group_by(interval, day) %>% summarise(mean_steps=mean(steps))
+xyplot(sum_data3$mean_steps ~ sum_data3$interval | sum_data3$day, 
+       layout = c(1, 2), type = "l", 
+       xlab = "Interval", ylab = "Number of steps")
+
+```
+
+
+
